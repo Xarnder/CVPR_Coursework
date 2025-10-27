@@ -1,0 +1,10 @@
+# This file lists Python packages to be installed by pip.
+# PyTorch is already in the base image, so we don't need to list it here.
+numpy
+pandas
+matplotlib
+tqdm
+opencv-python
+scipy
+ipdb
+Pillow

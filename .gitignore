@@ -1,0 +1,36 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# PyCharm specific files
+.idea/
+
+# Virtual environment folders (though we use Docker, this is good practice)
+venv/
+env/
+.venv/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Operating System generated files
+.DS_Store
+Thumbs.db
+
+# Log files
+*.log
+
+# Datasets and large files in your 'data' directory.
+# We back up the CODE, not the DATA.
+# The asterisk (*) is a wildcard meaning "everything inside".
+data/input/*
+data/output/*
+
+# If you have very large files in your data directory that you still want to track,
+# you can "un-ignore" them with a '!' but for now, we ignore the data.
+# For example, to track a specific small CSV file:
+# !data/input/my_small_dataset.csv
