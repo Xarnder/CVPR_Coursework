@@ -12,6 +12,10 @@ venv/
 env/
 .venv/
 
+descriptors/
+batch_results_12bins/
+
+
 # Build artifacts
 build/
 dist/
