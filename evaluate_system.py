@@ -1,154 +1,293 @@
-# In file: evaluate_system.py
+# evaluate_system.py
+"""
+Requirement 2 evaluator (updated):
+- Computes PR statistics (including Precision@K and Recall@K) for EACH experiment.
+- Plots PR curves for ALL experiments on ONE combined figure.
+- Optionally marks the PR@K point (mean R@K, mean P@K) per experiment on the combined figure.
+- Computes a confusion matrix per experiment (k-NN over neighbours).
+- Saves a CSV summary with key metrics.
+
+Usage examples:
+  Auto-discover experiments under descriptors/global_rgb_*bins:
+    python evaluate_system.py --topk 10 --knn 5 --with-prk-points --save-individual-pr
+
+  Or specify bin counts explicitly:
+    python evaluate_system.py --experiments 12 24 32 --topk 10 --knn 5 --with-prk-points
+"""
+
+import argparse
 import os
+import re
+import csv
+from collections import Counter
+
 import numpy as np
 import scipy.io as sio
 import matplotlib.pyplot as plt
 from tqdm import tqdm
-from collections import Counter
 from sklearn.metrics import ConfusionMatrixDisplay
 
-# --- Configuration ---
-# Set this to the number of bins for the experiment you want to evaluate.
-N_BINS_PER_CHANNEL = 12
-
+# ---- Defaults (override via CLI) ----
+DATASET_FOLDER = 'MSRC_ObjCategImageDatabase_v2'
 DESCRIPTOR_FOLDER = 'descriptors'
-DESCRIPTOR_SUBFOLDER = f'global_rgb_{N_BINS_PER_CHANNEL}bins'
-IMAGE_FOLDER = 'MSRC_ObjCategImageDatabase_v2'
+EXPERIMENT_FOLDER_FMT = 'global_rgb_{bins}bins'
+TOPK_DEFAULT = 10
+KNN_DEFAULT = 5
 
-# For the confusion matrix, we'll make a prediction based on the majority
-# vote of the top K results. 5 is a common choice.
-K_FOR_PREDICTION = 5
+def ensure_dir(path: str):
+    os.makedirs(path, exist_ok=True)
 
+def get_class_from_filename(path_or_name: str) -> str:
+    name = os.path.basename(path_or_name)
+    stem = os.path.splitext(name)[0]
+    return stem.split('_', 1)[0]
 
-# --- Helper Functions ---
+def load_experiment(descriptor_subdir: str):
+    desc_dir = os.path.join(DESCRIPTOR_FOLDER, descriptor_subdir)
+    if not os.path.isdir(desc_dir):
+        raise FileNotFoundError(f"Descriptor directory not found: {desc_dir}")
 
-def get_class_from_filename(filename):
-    """Extracts the class number from a filename (e.g., '7_19_s.bmp' -> 7)."""
-    basename = os.path.basename(filename)
-    try:
-        return int(basename.split('_')[0])
-    except (ValueError, IndexError):
-        return -1  # Return an invalid class if filename is not as expected
+    feats, files = [], []
+    for filename in os.listdir(desc_dir):
+        if not filename.endswith('.mat'):
+            continue
+        img_path = os.path.join(DATASET_FOLDER, 'Images', filename.replace('.mat', '.bmp'))
+        mat = sio.loadmat(os.path.join(desc_dir, filename))
+        if 'F' not in mat:
+            raise KeyError(f"'F' not found in {filename}")
+        F = mat['F'].ravel().astype(np.float64)
+        feats.append(F); files.append(img_path)
 
+    if not files:
+        raise RuntimeError(f"No .mat descriptors found in {desc_dir}")
 
-def cvpr_compare(f1, f2):
-    """Calculates Euclidean distance between two feature vectors."""
-    return np.linalg.norm(f1 - f2)
+    ALLFEAT = np.vstack(feats)
+    ALLFILES = list(files)
+    ALLCLASSES = np.array([get_class_from_filename(f) for f in ALLFILES])
+    return ALLFEAT, ALLFILES, ALLCLASSES
 
+def rank_for_query(query_idx: int, FEAT: np.ndarray):
+    q = FEAT[query_idx]
+    d = np.linalg.norm(FEAT - q, axis=1)
+    order = np.argsort(d)
+    return order[order != query_idx]
 
-# --- Main Evaluation Script ---
+def compute_pr_curve_per_query(query_idx: int, FEAT: np.ndarray, CLASSES: np.ndarray):
+    true_class = CLASSES[query_idx]
+    ranked = rank_for_query(query_idx, FEAT)
+    ranked_classes = CLASSES[ranked]
 
-print(f"--- Starting Full System Evaluation for {N_BINS_PER_CHANNEL}-bin Histograms ---")
+    total_relevant = int(np.sum(CLASSES == true_class)) - 1
+    if total_relevant <= 0:
+        return np.array([1.0]), np.array([0.0]), ranked  # degenerate
 
-# 1. Load All Descriptors and Ground Truth Class Labels
-print(f"Loading descriptors from '{DESCRIPTOR_SUBFOLDER}'...")
-descriptor_dir = os.path.join(DESCRIPTOR_FOLDER, DESCRIPTOR_SUBFOLDER)
-if not os.path.exists(descriptor_dir):
-    print(f"\nERROR: Descriptors not found. Please run cvpr_computedescriptors.py for {N_BINS_PER_CHANNEL} bins first.")
-    exit()
+    precisions, recalls = [], []
+    tp = 0
+    for i, c in enumerate(ranked_classes, start=1):
+        if c == true_class:
+            tp += 1
+        precisions.append(tp / i)
+        recalls.append(tp / total_relevant)
 
-ALLFEAT, ALLFILES = [], []
-for filename in os.listdir(descriptor_dir):
-    if filename.endswith('.mat'):
-        img_path = os.path.join(IMAGE_FOLDER, 'Images', filename.replace(".mat", ".bmp"))
-        descriptor_path = os.path.join(descriptor_dir, filename)
-        mat_data = sio.loadmat(descriptor_path)
-        ALLFILES.append(img_path)
-        ALLFEAT.append(mat_data['F'][0])
+    return np.array(precisions, float), np.array(recalls, float), ranked
 
-ALLFEAT = np.array(ALLFEAT)
-NIMG = len(ALLFILES)
-ALLCLASSES = np.array([get_class_from_filename(f) for f in ALLFILES])
-print(f"Loaded {NIMG} descriptors.")
+def interpolate_pr(precisions: np.ndarray, recalls: np.ndarray, recall_samples=None):
+    if recall_samples is None:
+        recall_samples = np.linspace(0.0, 1.0, 11)
+    interp = np.zeros_like(recall_samples, dtype=float)
+    for i, r in enumerate(recall_samples):
+        mask = recalls >= r
+        interp[i] = np.max(precisions[mask]) if np.any(mask) else 0.0
+    return recall_samples, interp
 
-# Prepare lists to store results from all queries
-y_true_for_cm = []  # Ground truth labels for the confusion matrix
-y_pred_for_cm = []  # Predicted labels for the confusion matrix
-all_precisions_for_pr = []  # A list to hold the precision vectors for each query
+def compute_confusion_matrix_preds(FEAT: np.ndarray, CLASSES: np.ndarray, knn: int):
+    y_true, y_pred = [], []
+    for i in range(len(CLASSES)):
+        ranked = rank_for_query(i, FEAT)
+        neigh = ranked[:knn]
+        vote = Counter(CLASSES[neigh]).most_common(1)[0][0]
+        y_true.append(CLASSES[i]); y_pred.append(vote)
+    return np.array(y_true), np.array(y_pred)
 
-# 2. Main Loop: Iterate through EVERY image in the dataset as a query
-for query_idx in tqdm(range(NIMG), desc="Evaluating all 591 queries"):
-    query_feat = ALLFEAT[query_idx]
-    query_class = ALLCLASSES[query_idx]
+def discover_experiment_folders():
+    results = []
+    if not os.path.isdir(DESCRIPTOR_FOLDER):
+        return results
+    pat = re.compile(r'^global_rgb_(\d+)bins$')
+    for name in os.listdir(DESCRIPTOR_FOLDER):
+        m = pat.match(name)
+        if m:
+            results.append((int(m.group(1)), name))
+    results.sort()
+    return results
 
-    # Calculate how many other images of the same class exist in the dataset
-    total_relevant_items = np.sum(ALLCLASSES == query_class) - 1
+def evaluate_experiment(subfolder: str, topk: int, knn: int, save_individual_pr: bool):
+    print(f"\n=== Evaluating experiment: {subfolder} ===")
+    FEAT, FILES, CLASSES = load_experiment(subfolder)
+    N = len(FILES)
+    classes_sorted = sorted(np.unique(CLASSES).tolist())
 
-    # Perform the search: calculate distance to all other images
-    dst = [(cvpr_compare(query_feat, feat), i) for i, feat in enumerate(ALLFEAT)]
-    dst.sort(key=lambda x: x[0])
+    recall_grid = np.linspace(0.0, 1.0, 11)
+    interp_precisions = []
+    P_at_K, R_at_K = [], []
 
-    # Get the ranked list of indices and classes (excluding the query itself)
-    ranked_indices = [d[1] for d in dst[1:]]
-    ranked_classes = ALLCLASSES[ranked_indices]
+    for qi in tqdm(range(N), desc=f"PR per query [{subfolder}]"):
+        P, R, ranked = compute_pr_curve_per_query(qi, FEAT, CLASSES)
+        _, Pint = interpolate_pr(P, R, recall_grid)
+        interp_precisions.append(Pint)
 
-    # --- A) Calculate Precision-Recall values for this specific query ---
-    relevant_found_count = 0
-    precisions = []
-    recalls = []
-    for k, result_class in enumerate(ranked_classes):
-        if result_class == query_class:
-            relevant_found_count += 1
+        true_class = CLASSES[qi]
+        ranked_classes = CLASSES[ranked]
+        tp_at_k = int(np.sum(ranked_classes[:topk] == true_class))
+        total_relevant = int(np.sum(CLASSES == true_class)) - 1
+        prec_at_k = tp_at_k / topk
+        rec_at_k = (tp_at_k / total_relevant) if total_relevant > 0 else 0.0
+        P_at_K.append(prec_at_k); R_at_K.append(rec_at_k)
 
-        precision = relevant_found_count / (k + 1)
-        recall = relevant_found_count / total_relevant_items if total_relevant_items > 0 else 0
-        precisions.append(precision)
-        recalls.append(recall)
+    mean_interp_precision = np.mean(np.stack(interp_precisions, axis=0), axis=0)
+    mAP11 = float(np.mean(mean_interp_precision))
+    mean_P_at_K = float(np.mean(P_at_K))
+    mean_R_at_K = float(np.mean(R_at_K))
 
-    # To average PR curves, we interpolate precision at standard recall levels
-    recall_levels = np.linspace(0.1, 1.0, 10)
-    interpolated_precisions = []
-    for r_level in recall_levels:
-        # Find max precision for any recall value >= current level
-        p_max = max([p for r, p in zip(recalls, precisions) if r >= r_level], default=0)
-        interpolated_precisions.append(p_max)
-    all_precisions_for_pr.append(interpolated_precisions)
+    # Confusion matrix
+    y_true, y_pred = compute_confusion_matrix_preds(FEAT, CLASSES, knn=knn)
+    fig, ax = plt.subplots(figsize=(8, 6))
+    ConfusionMatrixDisplay.from_predictions(
+        y_true, y_pred,
+        labels=classes_sorted,
+        display_labels=classes_sorted,
+        ax=ax, cmap='Blues', colorbar=True
+    )
+    ax.set_title(f'Confusion Matrix — {subfolder} (k={knn})')
+    ax.set_xlabel('Predicted'); ax.set_ylabel('True')
+    plt.xticks(rotation=45, ha='right')
+    plt.tight_layout()
+    ensure_dir('plots')
+    cm_path = os.path.join('plots', f'confusion_matrix_{subfolder}.png')
+    plt.savefig(cm_path, dpi=150); plt.close(fig)
+    print(f"Saved confusion matrix: {cm_path}")
 
-    # --- B) Determine the predicted class for the Confusion Matrix ---
-    top_k_classes = ranked_classes[:K_FOR_PREDICTION]
-    # Predict the class by majority vote among the top K results
-    predicted_class = Counter(top_k_classes).most_common(1)[0][0]
+    m = re.search(r'(\d+)bins', subfolder)
+    bins = int(m.group(1)) if m else None
 
-    y_true_for_cm.append(query_class)
-    y_pred_for_cm.append(predicted_class)
+    metrics = {
+        'experiment': subfolder,
+        'bins': bins,
+        'mAP11': mAP11,
+        f'Precision@{topk}': mean_P_at_K,
+        f'Recall@{topk}': mean_R_at_K,
+        'num_images': N,
+        'knn_for_cm': knn
+    }
 
-# 3. Final Aggregation and Plotting
-print("\n--- Evaluation complete. Generating final plots... ---")
+    # Return richer curve payload so the combined plot can also draw PR@K markers.
+    pr_payload = {
+        'recall_grid': recall_grid,
+        'mean_precision_curve': mean_interp_precision,
+        'label': f'{bins} bins — mAP11={mAP11:.3f}',
+        'bins': bins,
+        'mean_P_at_K': mean_P_at_K,
+        'mean_R_at_K': mean_R_at_K
+    }
 
-# --- Plot 1: The Precision-Recall Curve ---
-mean_precisions = np.mean(all_precisions_for_pr, axis=0)
-mAP = np.mean(mean_precisions)  # mean Average Precision (a single score for system quality)
+    # Optional per-experiment PR plot
+    if save_individual_pr:
+        fig2, ax2 = plt.subplots(figsize=(7, 5))
+        ax2.plot(recall_grid, mean_interp_precision, marker='o')
+        ax2.set_xlim(0, 1); ax2.set_ylim(0, 1)
+        ax2.set_xlabel('Recall'); ax2.set_ylabel('Precision')
+        ax2.set_title(f'PR Curve — {bins} bins\n'
+                      f'mAP11={mAP11:.3f} | P@{topk}={mean_P_at_K:.3f} | R@{topk}={mean_R_at_K:.3f}')
+        ax2.grid(True, alpha=0.3)
+        plt.tight_layout()
+        pr_path = os.path.join('plots', f'pr_curve_{subfolder}.png')
+        plt.savefig(pr_path, dpi=150); plt.close(fig2)
+        print(f"Saved PR curve: {pr_path}")
 
-plt.figure(figsize=(10, 7))
-plt.plot(np.linspace(0.1, 1.0, 10), mean_precisions, marker='o', linestyle='-', color='b')
-plt.title(f'Mean Precision-Recall Curve ({N_BINS_PER_CHANNEL}-bin Histogram)\nmAP = {mAP:.4f}', fontsize=16)
-plt.xlabel('Recall', fontsize=12)
-plt.ylabel('Mean Precision', fontsize=12)
-plt.grid(True, linestyle='--')
-plt.xlim(0, 1.05)
-plt.ylim(0, 1.05)
-plt.tight_layout()
-pr_curve_path = f'pr_curve_{N_BINS_PER_CHANNEL}bins.png'
-plt.savefig(pr_curve_path)
-print(f"Precision-Recall curve saved to '{pr_curve_path}'")
-plt.show()
+    return metrics, pr_payload
 
-# --- Plot 2: The Confusion Matrix ---
-fig, ax = plt.subplots(figsize=(12, 12))
-# The class labels for the plot axes
-class_labels = [str(i) for i in sorted(np.unique(ALLCLASSES))]
+def main():
+    parser = argparse.ArgumentParser(description="Requirement 2 evaluator: PR curves (combined), PR@K, confusion matrices.")
+    parser.add_argument('--experiments', nargs='*', type=int,
+                        help="Bin counts to evaluate (e.g., --experiments 12 24 32). "
+                             "If omitted, auto-discovers 'global_rgb_*bins'.")
+    parser.add_argument('--topk', type=int, default=TOPK_DEFAULT,
+                        help=f"K for Precision@K and Recall@K (default {TOPK_DEFAULT}).")
+    parser.add_argument('--knn', type=int, default=KNN_DEFAULT,
+                        help=f"k for confusion-matrix voting (default {KNN_DEFAULT}).")
+    parser.add_argument('--save-individual-pr', action='store_true',
+                        help="Also save a PR plot per experiment.")
+    parser.add_argument('--with-prk-points', action='store_true',
+                        help="Overlay mean (Recall@K, Precision@K) point per experiment on the combined plot.")
+    args = parser.parse_args()
 
-ConfusionMatrixDisplay.from_predictions(y_true_for_cm, y_pred_for_cm,
-                                        labels=sorted(np.unique(ALLCLASSES)),
-                                        display_labels=class_labels,
-                                        ax=ax, cmap='Blues', colorbar=True)
+    # Build experiment list
+    if args.experiments and len(args.experiments) > 0:
+        exp_subfolders = [EXPERIMENT_FOLDER_FMT.format(bins=b) for b in args.experiments]
+    else:
+        discovered = discover_experiment_folders()
+        if not discovered:
+            raise RuntimeError(f"No experiment folders found under '{DESCRIPTOR_FOLDER}'. "
+                               f"Expected names like '{EXPERIMENT_FOLDER_FMT.format(bins=12)}'")
+        exp_subfolders = [name for _, name in discovered]
 
-plt.title(f'Confusion Matrix ({N_BINS_PER_CHANNEL}-bin Histogram)', fontsize=16)
-ax.set_xlabel('Predicted Class', fontsize=12)
-ax.set_ylabel('True Class', fontsize=12)
-plt.xticks(rotation=45)
-plt.tight_layout()
-confusion_matrix_path = f'confusion_matrix_{N_BINS_PER_CHANNEL}bins.png'
-plt.savefig(confusion_matrix_path)
-print(f"Confusion matrix saved to '{confusion_matrix_path}'")
-plt.show()
+    print("Experiments to evaluate:")
+    for s in exp_subfolders:
+        print(" -", s)
+
+    all_metrics = []
+    curve_payloads = []
+
+    for sub in exp_subfolders:
+        metrics, curve = evaluate_experiment(
+            subfolder=sub,
+            topk=args.topk,
+            knn=args.knn,
+            save_individual_pr=args.save_individual_pr
+        )
+        all_metrics.append(metrics)
+        curve_payloads.append(curve)
+
+    # Save CSV summary
+    ensure_dir('plots')
+    csv_path = os.path.join('plots', 'requirement2_summary.csv')
+    fieldnames = ['experiment', 'bins', 'mAP11', f'Precision@{args.topk}', f'Recall@{args.topk}', 'num_images', 'knn_for_cm']
+    with open(csv_path, 'w', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in sorted(all_metrics, key=lambda r: (r['bins'] if r['bins'] is not None else 0)):
+            writer.writerow(row)
+    print(f"\nSaved metrics summary: {csv_path}")
+
+    # --- Combined PR plot: ALL experiments on ONE graph ---
+    fig, ax = plt.subplots(figsize=(9, 6))
+    for payload in sorted(curve_payloads, key=lambda p: (p['bins'] if p['bins'] is not None else 0)):
+        ax.plot(payload['recall_grid'],
+                payload['mean_precision_curve'],
+                marker='o',
+                label=payload['label'])
+    if args.with_prk_points:
+        # Overlay the mean PR@K point for each experiment for quick “top-10” comparison.
+        for payload in curve_payloads:
+            ax.scatter(payload['mean_R_at_K'],
+                       payload['mean_P_at_K'],
+                       s=50, marker='s', zorder=5)
+            # Annotate lightly with bin count near the point
+            if payload['bins'] is not None:
+                ax.annotate(f"{payload['bins']}b",
+                            (payload['mean_R_at_K'], payload['mean_P_at_K']),
+                            textcoords="offset points", xytext=(6, 4), fontsize=8)
+
+    ax.set_xlim(0, 1); ax.set_ylim(0, 1)
+    ax.set_xlabel('Recall'); ax.set_ylabel('Precision')
+    ax.set_title(f'PR Curves — All Experiments (P@{args.topk} points shown if enabled)')
+    ax.grid(True, alpha=0.3)
+    ax.legend(loc='lower left', fontsize=9, ncol=1)
+    plt.tight_layout()
+    combined_path = os.path.join('plots', 'pr_curves_all_experiments.png')
+    plt.savefig(combined_path, dpi=150)
+    print(f"Saved combined PR curves: {combined_path}")
+    plt.show()
+
+if __name__ == '__main__':
+    main()

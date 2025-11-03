@@ -9,3 +9,4 @@ scipy
 ipdb
 Pillow
 scikit-learn
+scikit-image

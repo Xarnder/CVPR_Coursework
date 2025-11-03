@@ -7,7 +7,7 @@ def extract_histogram(img):
     """
     Extracts a color histogram from an image.
     """
-    n_bins_per_channel = 12
+    n_bins_per_channel = 2
 
     img_8bit = (img * 255).astype(np.uint8)
 

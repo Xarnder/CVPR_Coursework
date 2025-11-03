@@ -10,7 +10,7 @@ from extract_histogram import extract_histogram
 # --- Configuration ---
 DATASET_FOLDER = 'MSRC_ObjCategImageDatabase_v2'
 OUT_FOLDER = 'descriptors'
-OUT_SUBFOLDER = 'global_rgb_12bins'
+OUT_SUBFOLDER = 'global_rgb_2bins'
 
 # --- Main Script Logic ---
 

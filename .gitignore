@@ -14,6 +14,10 @@ env/
 
 descriptors/
 batch_results_12bins/
+descriptors/
+my_spatial_results/descriptors/
+plots/
+spatial_grid_outputs/descriptors/
 
 
 # Build artifacts
