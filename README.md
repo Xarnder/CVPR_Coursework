@@ -36,10 +36,6 @@ python3 compute_spatial_features.py \
   --feature_type color \
   --grid_size 4 \
   --color_bins 12 \
-  --output_dir ./  \
-  --feature_type color \
-  --grid_size 4 \
-  --color_bins 12 \
   --output_dir ./  
 ```
 
@@ -86,4 +82,10 @@ python3 compute_pca_mahalanobis.py \
 
 ```
   python evaluate_system.py --topk 10 --knn 5 --with-prk-points
+```
+
+### 11. Compute MaP
+
+```
+Python3 calculate_map.py
 ```
