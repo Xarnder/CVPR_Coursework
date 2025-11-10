@@ -1,23 +1,27 @@
+### Computer Vision and Pattern Recognition Surrey University MsC Project Assigment
 
-### 1. Run the Bin Optimization
+
+### 1. Guide on how to use Docker: [Docker Guide](https://www.xanderwiles.com/pages/Docker_Guide/).
+
+### 2. Run the Bin Optimization
 
 ```
 python3 optimize_bins.py
 ```
 
-### 2. Compute Global Colour Histogram 
+### 3. Compute Global Colour Histogram 
 ```  
 python3 cvpr_computedescriptors.py --bins 12 --clean
 ```
 
-### 3. Generate Visual Examples
+### 4. Generate Visual Examples
 
 ```
 python3 cvpr_visualsearch_batch.py
 ```
 
 
-### 4. Compute Spatial Features Colour
+### 5. Compute Spatial Features Colour
 ```
 python3 compute_spatial_features.py \
   --feature_type color \
@@ -31,7 +35,7 @@ python3 compute_spatial_features.py \
 ```
 
 
-### 5. Compute Spatial Features Texture
+### 6. Compute Spatial Features Texture
 ```
 python3 compute_spatial_features.py \
   --feature_type texture \
@@ -41,13 +45,13 @@ python3 compute_spatial_features.py \
   --output_dir ./
   ```
 
-### 6. Compute Hog Features 
+### 7. Compute Hog Features 
 ```
 python3 compute_hog_features.py
 ```
 
 
-### 7. Compute Distance Evaluation 
+### 8. Compute Distance Evaluation 
 
 ```
 python3 batch_evaluate_distance.py \
@@ -59,7 +63,7 @@ python3 batch_evaluate_distance.py \
   --seed 123
 ```
 
-### 8. Compute PCA Mahalanobis
+### 9. Compute PCA Mahalanobis
 
 ```
 python3 compute_pca_mahalanobis.py \
@@ -69,7 +73,7 @@ python3 compute_pca_mahalanobis.py \
   --num_queries 10
 ```
 
-### 9. Compute PR Curves and Confusion Matrix Tables
+### 10. Compute PR Curves and Confusion Matrix Tables
 
 ```
   python evaluate_system.py --topk 10 --knn 5 --with-prk-points
