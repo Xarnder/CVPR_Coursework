@@ -28,6 +28,13 @@ my_spatial_results/
 pca_mahalanobis_results_8bins_32d/
 pca_mahalanobis_results_12bins_32d/
 spatial_grid_outputs/
+Old_Results/
+New_Results/
+visualizations/
+plots/
+
+
+
 
 
 

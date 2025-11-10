@@ -1,9 +1,0 @@
-timestamp,descriptor_name,distance_metric,num_queries,seed,top_k,mean_precision_at_10,mean_recall_at_10
-2025-11-04 14:42:49,hog_9o_8ppc_2cpb,l1,10,123,10,0.3000,0.1066
-2025-11-04 14:42:51,hog_9o_8ppc_2cpb,l2,10,123,10,0.1500,0.0548
-2025-11-04 14:42:53,hog_9o_8ppc_2cpb,chi2,10,123,10,0.2000,0.0721
-2025-11-04 14:42:55,hog_9o_8ppc_2cpb,cosine,10,123,10,0.1500,0.0548
-2025-11-04 14:44:25,global_rgb_12bins,l1,10,123,10,0.4800,0.1748
-2025-11-04 14:44:27,global_rgb_12bins,l2,10,123,10,0.4000,0.1457
-2025-11-04 14:44:29,global_rgb_12bins,chi2,10,123,10,0.4800,0.1733
-2025-11-04 14:44:31,global_rgb_12bins,cosine,10,123,10,0.3900,0.1422

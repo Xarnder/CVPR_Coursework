@@ -1,0 +1,5 @@
+Global Histogram
+Spatial Texture
+Spatial Colour
+Mahaloannobis
+Hog Features
