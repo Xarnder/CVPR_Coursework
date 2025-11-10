@@ -1,6 +1,15 @@
 ### Computer Vision and Pattern Recognition Surrey University MsC Project Assigment
 
 
+<img src="image_assets/bin_optimization_results.png" alt="" width="300">
+<img src="image_assets/confusion_matrix_global_rgb_12bins.png" alt="" width="300">
+<img src="image_assets/pr_curves_all_experiments.png" alt="" width="300">
+<img src="image_assets/result_for_query_9_7_s.png" alt="" width="300">
+<img src="image_assets/result_for_query_14_6_s.png" alt="" width="300">
+<img src="image_assets/10_15_s.jpg" alt="" width="300">
+<img src="image_assets/10_16_s.jpg" alt="" width="300">
+<img src="image_assets/10_17_s.jpg" alt="" width="300">
+
 ### 1. Guide on how to use Docker: [Docker Guide](https://www.xanderwiles.com/pages/Docker_Guide/).
 
 ### 2. Run the Bin Optimization
@@ -67,7 +76,7 @@ python3 batch_evaluate_distance.py \
 
 ```
 python3 compute_pca_mahalanobis.py \
-  --descriptor_dir ./spatial_grid_outputs/descriptors/spatial_color_4x4_12bins \
+  --descriptor_dir ./descriptors/pca_spatial_color_4x4_12bins \
   --output_dir ./pca_mahalanobis_results_spatial_color_32d \
   --n_components 32 \
   --num_queries 10
