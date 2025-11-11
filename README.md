@@ -50,13 +50,19 @@ python3 compute_spatial_features.py \
   --output_dir ./
   ```
 
-### 7. Compute Hog Features 
+### 7. Compute BoVW and Sift
+
+```
+python3 compute_bovw.py --k 500
+```
+
+### 8. Compute Hog Features 
 ```
 python3 compute_hog_features.py
 ```
 
 
-### 8. Compute Distance Evaluation 
+### 9. Compute Distance Evaluation 
 
 ```
 python3 batch_evaluate_distance.py \
@@ -68,7 +74,7 @@ python3 batch_evaluate_distance.py \
   --seed 123
 ```
 
-### 9. Compute PCA Mahalanobis
+### 10. Compute PCA Mahalanobis
 
 ```
 python3 compute_pca_mahalanobis.py \
@@ -78,13 +84,13 @@ python3 compute_pca_mahalanobis.py \
   --num_queries 10
 ```
 
-### 10. Compute PR Curves and Confusion Matrix Tables
+### 11. Compute PR Curves and Confusion Matrix Tables
 
 ```
-  python evaluate_system.py --topk 10 --knn 5 --with-prk-points
+  python3 evaluate_system.py --topk 10 --knn 5 --with-prk-points
 ```
 
-### 11. Compute MaP
+### 12. Compute MaP
 
 ```
 Python3 calculate_map.py
